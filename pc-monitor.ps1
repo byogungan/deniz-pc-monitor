@@ -11,7 +11,7 @@ param(
   [string]$ServerUrl = $env:PCM_SERVER,
   [string]$Token     = $env:PCM_TOKEN,
   [int]$SampleSeconds = 5,     # kaç saniyede bir aktif pencereye bakılır
-  [int]$SendSeconds   = 600,   # kaç saniyede bir CRM'e gönderilir (10 dk)
+  [int]$SendSeconds   = 60,    # kaç saniyede bir CRM'e gönderilir (near-live)
   [int]$IdleSeconds   = 60     # bu süre giriş yoksa "boşta" sayılır, süre eklenmez
 )
 
@@ -119,7 +119,7 @@ $usage = @{}                 # app -> saniye
 $titles = @{}                # app -> son pencere başlığı
 $launched = @{}              # bu oturumda açılış kaydı verilen app'ler
 $pending = New-Object System.Collections.ArrayList   # gönderilemeyen olaylar
-$lastPowerCheck = (Get-Date).AddMinutes(-15)
+$lastPowerCheck = (Get-Date).AddDays(-15)  # ilk gönderimde 15 günlük açılma/kapanma geçmişini backfill et
 # İlk gönderim ~60 sn sonra olsun ki cihaz CRM'de hemen görünsün
 $lastSend = (Get-Date).AddSeconds([Math]::Max(0, $SendSeconds - 60))
 
