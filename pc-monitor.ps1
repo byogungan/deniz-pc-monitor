@@ -164,6 +164,22 @@ function Send-Batch {
   }
 }
 
+# İlk kurulumda beklemeden hemen gönder: cihaz + açılış anında CRM'de görünsün.
+# İlk aktif pencereyi de bir kez örnekleyip gönderelim.
+try {
+  if ((Get-IdleMs) -lt ($IdleSeconds * 1000)) {
+    $fg0 = Get-ForegroundApp
+    if ($fg0 -and $fg0.App) {
+      $usage[$fg0.App] = $SampleSeconds
+      $titles[$fg0.App] = $fg0.Title
+      $launched[$fg0.App] = $true
+      [void]$pending.Add(@{ type='APP_LAUNCH'; app=$fg0.App; occurredAt=(Get-Date).ToUniversalTime().ToString('o') })
+    }
+  }
+} catch { }
+Send-Batch
+$lastSend = Get-Date
+
 # --- Ana döngü ---
 while ($true) {
   try {
