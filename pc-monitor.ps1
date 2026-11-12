@@ -120,7 +120,8 @@ $titles = @{}                # app -> son pencere başlığı
 $launched = @{}              # bu oturumda açılış kaydı verilen app'ler
 $pending = New-Object System.Collections.ArrayList   # gönderilemeyen olaylar
 $lastPowerCheck = (Get-Date).AddMinutes(-15)
-$lastSend = Get-Date
+# İlk gönderim ~60 sn sonra olsun ki cihaz CRM'de hemen görünsün
+$lastSend = (Get-Date).AddSeconds([Math]::Max(0, $SendSeconds - 60))
 
 # Açılış: boot zamanını POWER ON olarak bir kez gönder
 try {
