@@ -72,7 +72,7 @@ function Get-IdleMs {
 function Get-ForegroundApp {
   $h = [PcmNative]::GetForegroundWindow()
   if ($h -eq [IntPtr]::Zero) { return $null }
-  $procId = 0
+  [uint32]$procId = 0
   [void][PcmNative]::GetWindowThreadProcessId($h, [ref]$procId)
   if ($procId -le 0) { return $null }
   $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
@@ -146,7 +146,7 @@ function Send-Batch {
   }
   if ($events.Count -eq 0) { $script:lastPowerCheck = $nowCheck; return }
 
-  $body = @{ deviceId=$DeviceId; deviceName=$DeviceName; events=$events } | ConvertTo-Json -Depth 6
+  $body = @{ deviceId=$DeviceId; deviceName=$DeviceName; events=@($events) } | ConvertTo-Json -Depth 6
   try {
     Invoke-RestMethod -Uri $IngestUrl -Method Post -Body $body -ContentType 'application/json' -Headers @{ 'X-Pc-Token'=$Token } -TimeoutSec 30 | Out-Null
     Write-Host ("{0}  gönderildi: {1} olay" -f (Get-Date -Format 'HH:mm:ss'), $events.Count) -ForegroundColor DarkGray
