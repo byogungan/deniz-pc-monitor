@@ -97,8 +97,9 @@ try {
 function Get-PowerEvents([datetime]$since) {
   $out = @()
   try {
-    Get-WinEvent -FilterHashtable @{ LogName='System'; Id=@(1074,6006,6008,42,107); StartTime=$since } -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-WinEvent -FilterHashtable @{ LogName='System'; Id=@(6005,1074,6006,6008,42,107); StartTime=$since } -ErrorAction SilentlyContinue | ForEach-Object {
       $sub = switch ($_.Id) {
+        6005 { 'ON' }    # Event log servisi başladı ~ açılış
         42   { 'SLEEP' }
         107  { 'WAKE' }
         1074 { 'OFF' }
@@ -112,6 +113,23 @@ function Get-PowerEvents([datetime]$since) {
     }
   } catch { }
   return $out
+}
+
+# Belirli aralıktaki açılma/kapanma geçmişini Windows kaydından çekip gönderir (CRM "Bu aralığı çek")
+function Invoke-Backfill([datetime]$start, [datetime]$end) {
+  $events = New-Object System.Collections.ArrayList
+  try {
+    Get-WinEvent -FilterHashtable @{ LogName='System'; Id=@(6005,1074,6006,6008,42,107); StartTime=$start; EndTime=$end } -ErrorAction SilentlyContinue | ForEach-Object {
+      $sub = switch ($_.Id) { 6005{'ON'} 42{'SLEEP'} 107{'WAKE'} 1074{'OFF'} 6006{'OFF'} 6008{'OFF'} default{$null} }
+      if ($sub) { [void]$events.Add(@{ type='POWER'; subtype=$sub; occurredAt=$_.TimeCreated.ToUniversalTime().ToString('o') }) }
+    }
+  } catch { }
+  if ($events.Count -eq 0) { return }
+  $body = @{ deviceId=$DeviceId; deviceName=$DeviceName; events=@($events) } | ConvertTo-Json -Depth 6
+  try {
+    Invoke-RestMethod -Uri $IngestUrl -Method Post -Body $body -ContentType 'application/json' -Headers @{ 'X-Pc-Token'=$Token } -TimeoutSec 60 | Out-Null
+    Write-Host ("{0}  aralik gecmisi gonderildi: {1} guc olayi" -f (Get-Date -Format 'HH:mm:ss'), $events.Count) -ForegroundColor DarkGray
+  } catch { }
 }
 
 # --- Durum ---
@@ -164,6 +182,26 @@ function Send-Batch {
   }
 }
 
+# CRM'den bekleyen komutları çeker (Şimdi çek / Bu aralığı çek)
+$CommandsUrl = "$ServerUrl/api/v1/pc-monitor/commands?deviceId=$DeviceId"
+function Poll-Commands {
+  try {
+    $cmds = Invoke-RestMethod -Uri $CommandsUrl -Method Get -Headers @{ 'X-Pc-Token'=$Token } -TimeoutSec 20
+    foreach ($c in @($cmds)) {
+      if ($c.type -eq 'SEND_NOW') {
+        Send-Batch; $script:lastSend = Get-Date
+      } elseif ($c.type -eq 'BACKFILL_POWER') {
+        try {
+          $st = [datetime]$c.params.start
+          $en = [datetime]$c.params.end
+          Invoke-Backfill $st $en
+        } catch { }
+      }
+    }
+  } catch { }
+}
+$lastPoll = Get-Date
+
 # İlk kurulumda beklemeden hemen gönder: cihaz + açılış anında CRM'de görünsün.
 # İlk aktif pencereyi de bir kez örnekleyip gönderelim.
 try {
@@ -196,6 +234,12 @@ while ($true) {
       }
     }
   } catch { }
+
+  # CRM komutlarını ~20 sn'de bir kontrol et (Şimdi çek / aralık çek)
+  if (((Get-Date) - $lastPoll).TotalSeconds -ge 20) {
+    Poll-Commands
+    $lastPoll = Get-Date
+  }
 
   if (((Get-Date) - $lastSend).TotalSeconds -ge $SendSeconds) {
     Send-Batch
